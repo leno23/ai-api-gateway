@@ -1,0 +1,382 @@
+openapi: 3.0.3
+info:
+  title: AI API Gateway
+  description: |
+    OpenAI-compatible gateway with tenant API keys, quota billing, redeem/invite flows, and admin APIs.
+    Machine-readable spec is served at `GET /openapi.yaml`.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+    description: Local default (see `HTTP_ADDR`)
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: User
+  - name: Admin
+  - name: Gateway
+  - name: Observability
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /metrics:
+    get:
+      tags: [Observability]
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Prometheus text exposition
+
+  /openapi.yaml:
+    get:
+      tags: [Observability]
+      summary: This OpenAPI document (YAML)
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user (email verification placeholder)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Validation error
+        "409":
+          description: Email or username taken
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and obtain JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Bearer access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+
+  /user/api-keys:
+    post:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Create API key (plaintext returned once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "201":
+          description: Key created
+        "401":
+          description: Missing or invalid JWT
+
+  /user/redeem:
+    post:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Redeem a code for quota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: New quota balance
+        "400":
+          description: Invalid or used code
+
+  /admin/redeem/batch:
+    post:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: Generate redeem codes (admin role)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchRedeemRequest"
+      responses:
+        "201":
+          description: Codes issued
+        "403":
+          description: Not admin
+
+  /admin/redeem/codes:
+    get:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: List redeem codes (paginated)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, default: 50, maximum: 200 }
+        - in: query
+          name: status
+          schema: { type: integer }
+          description: Filter by redeem_codes.status
+      responses:
+        "200":
+          description: Page of codes
+
+  /admin/redeem/stats:
+    get:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: Redeem code counts by status
+      responses:
+        "200":
+          description: Stats map
+
+  /admin/channels:
+    get:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: List upstream channels
+      responses:
+        "200":
+          description: Channel list (API key masked)
+    post:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: Create channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelPayload"
+      responses:
+        "201":
+          description: Created
+
+  /admin/channels/{id}:
+    put:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: Update channel
+      parameters:
+        - $ref: "#/components/parameters/ChannelId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelPayload"
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: Delete channel
+      parameters:
+        - $ref: "#/components/parameters/ChannelId"
+      responses:
+        "200":
+          description: OK
+
+  /admin/users/{id}/status:
+    patch:
+      tags: [Admin]
+      security: [{ bearerJWT: [] }]
+      summary: Ban or activate user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: integer
+                  description: 1 active, 0 disabled
+      responses:
+        "200":
+          description: OK
+
+  /v1/models:
+    get:
+      tags: [Gateway]
+      security: [{ gatewayApiKey: [] }]
+      summary: List models (DB-backed by default)
+      parameters:
+        - in: query
+          name: source
+          schema: { type: string, enum: [upstream] }
+          description: When upstream and API key configured, proxy env upstream
+      responses:
+        "200":
+          description: OpenAI-style model list
+        "401":
+          description: Missing or invalid sk- key
+
+  /v1/chat/completions:
+    post:
+      tags: [Gateway]
+      security: [{ gatewayApiKey: [] }]
+      summary: Chat completions (OpenAI-compatible body); may return 402 on insufficient quota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: OpenAI chat completion request
+      responses:
+        "200":
+          description: Completion or SSE stream
+        "401":
+          description: Invalid API key
+        "402":
+          description: Insufficient quota / unknown model pricing
+        "429":
+          description: Rate limited
+        "502":
+          description: Upstream unavailable after retries
+
+  /v1/embeddings:
+    post:
+      tags: [Gateway]
+      security: [{ gatewayApiKey: [] }]
+      summary: Placeholder
+      responses:
+        "501":
+          description: Not implemented
+
+  /v1/images/generations:
+    post:
+      tags: [Gateway]
+      security: [{ gatewayApiKey: [] }]
+      summary: Placeholder
+      responses:
+        "501":
+          description: Not implemented
+
+components:
+  parameters:
+    ChannelId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer, format: int64 }
+
+  securitySchemes:
+    bearerJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: From `POST /auth/login` (`access_token`).
+    gatewayApiKey:
+      type: http
+      scheme: bearer
+      description: API key with prefix `sk-` (only for `/v1/*`).
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email: { type: string, format: email }
+        username: { type: string, minLength: 3, maxLength: 64 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        invite_code: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer }
+
+    BatchRedeemRequest:
+      type: object
+      required: [count, quota]
+      properties:
+        count: { type: integer, minimum: 1, maximum: 5000 }
+        quota: { type: integer, format: int64, minimum: 1 }
+        expires_days: { type: integer }
+
+    ChannelPayload:
+      type: object
+      required: [name, provider, base_url, api_key]
+      properties:
+        name: { type: string }
+        provider: { type: string }
+        base_url: { type: string }
+        api_key: { type: string }
+        models:
+          type: array
+          items: { type: string }
+        model_mapping:
+          type: object
+          additionalProperties: { type: string }
+        priority: { type: integer }
+        weight: { type: integer }
+        status: { type: integer }
+        rate_limit: { type: integer }

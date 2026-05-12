@@ -1,0 +1,15 @@
+# Editor / local AI
+.cursor/
+
+# Env (keep backend/.env.example tracked via explicit paths if needed)
+.env
+.env.local
+backend/.env
+
+# Frontend build artifacts (also in frontend/.gitignore)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Go
+backend/bin/
