@@ -19,6 +19,9 @@ import (
 func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+	if cfg.AppEnv != "production" {
+		r.Use(middleware.CORS())
+	}
 
 	repos := repository.New(db)
 

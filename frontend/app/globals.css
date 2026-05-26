@@ -19,8 +19,28 @@
   }
 }
 
+html,
 body {
-  background: var(--background);
+  height: 100%;
+}
+
+body {
+  background: #f5f5f5;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Ant Design Layout：侧栏 + 主区占满视口 */
+.ant-layout.ant-layout-has-sider {
+  height: 100vh;
+  min-height: 100vh;
+}
+
+.ant-layout.ant-layout-has-sider > .ant-layout-sider {
+  height: 100%;
+}
+
+.ant-layout.ant-layout-has-sider > .ant-layout {
+  flex: 1;
+  min-height: 0;
 }

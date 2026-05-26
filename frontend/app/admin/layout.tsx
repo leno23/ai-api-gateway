@@ -23,7 +23,7 @@ export default function AdminLayout({
 
   if (!ready || !token) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-neutral-400">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-50 text-neutral-400">
         加载中…
       </div>
     );
