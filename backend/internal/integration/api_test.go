@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/leno23/ai-api-gateway/internal/config"
 	applog "github.com/leno23/ai-api-gateway/internal/log"
@@ -26,7 +27,12 @@ func skipWithoutIntegrationDSN(t *testing.T) {
 	}
 }
 
-func newIntegrationRouter(t *testing.T) *gin.Engine {
+type integrationEnv struct {
+	Router *gin.Engine
+	DB     *gorm.DB
+}
+
+func newIntegrationEnv(t *testing.T) integrationEnv {
 	t.Helper()
 	skipWithoutIntegrationDSN(t)
 	t.Setenv("DATABASE_DSN", os.Getenv("INTEGRATION_DATABASE_DSN"))
@@ -63,7 +69,12 @@ func newIntegrationRouter(t *testing.T) *gin.Engine {
 	t.Cleanup(func() { _ = rdb.Close() })
 
 	gin.SetMode(gin.TestMode)
-	return router.New(cfg, db, rdb, log)
+	return integrationEnv{Router: router.New(cfg, db, rdb, log), DB: db}
+}
+
+func newIntegrationRouter(t *testing.T) *gin.Engine {
+	t.Helper()
+	return newIntegrationEnv(t).Router
 }
 
 func TestIntegration_Health(t *testing.T) {

@@ -13,3 +13,4 @@ frontend/out/
 
 # Go
 backend/bin/
+/node_modules/

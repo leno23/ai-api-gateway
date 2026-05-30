@@ -52,10 +52,69 @@ func New(cfg *config.Config, db *gorm.DB, rdb *redis.Client, log *zap.Logger) *g
 	r.POST("/auth/register", handler.Register(authDeps))
 	r.POST("/auth/login", handler.Login(authDeps))
 
+	annDeps := handler.AnnouncementDeps{DB: db}
+	r.GET("/api/announcements", handler.ListAnnouncements(annDeps))
+
+	catalogDeps := handler.CatalogDeps{Repos: repos}
+	r.GET("/api/models", handler.ListCatalogModels(catalogDeps))
+	r.GET("/api/models/:model/price", handler.GetModelPrice(catalogDeps))
+	r.GET("/api/token-groups", handler.ListTokenGroups(catalogDeps))
+
 	u := r.Group("/user")
 	u.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	u.GET("/self", handler.UserSelf(authDeps))
 	u.POST("/api-keys", handler.CreateAPIKey(keyDeps))
 	u.POST("/redeem", handler.RedeemUser(redeemDeps))
+
+	apiUser := r.Group("/api/user")
+	apiUser.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiUser.GET("/self", handler.UserSelf(authDeps))
+
+	dashDeps := handler.DashboardDeps{
+		Repos: repos,
+		Nodes: handler.ParsePortalNodes(cfg.PortalAPINodesJSON),
+	}
+	apiDash := r.Group("/api/dashboard")
+	apiDash.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiDash.GET("/stats", handler.DashboardStats(dashDeps))
+	apiDash.GET("/charts", handler.DashboardCharts(dashDeps))
+	apiDash.GET("/nodes", handler.DashboardNodes(dashDeps))
+
+	apiNodes := r.Group("/api/nodes")
+	apiNodes.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiNodes.GET("/ping", handler.NodesPing(dashDeps))
+
+	apiLogs := r.Group("/api/logs")
+	apiLogs.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiLogs.GET("/usage", handler.ListUsageLogs(dashDeps))
+	apiLogs.GET("/tasks", handler.ListTaskLogs(dashDeps))
+
+	walletDeps := handler.WalletDeps{
+		DB:              db,
+		Repos:           repos,
+		RechargeEnabled: cfg.RechargeEnabled,
+		AffiliateBPS:    cfg.AffiliateRechargeBPS,
+		PortalOrigin:    cfg.PortalOrigin,
+	}
+	apiWallet := r.Group("/api/wallet")
+	apiWallet.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiWallet.GET("/summary", handler.WalletSummary(walletDeps))
+	apiWallet.POST("/redeem", handler.RedeemWithAffiliate(walletDeps))
+	apiWallet.POST("/affiliate/transfer", handler.TransferAffiliate(walletDeps))
+	apiWallet.POST("/recharge/mock", handler.MockRecharge(walletDeps))
+
+	tokenDeps := handler.TokenDeps{DB: db, Repos: repos}
+	apiTokens := r.Group("/api/tokens")
+	apiTokens.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiTokens.GET("", handler.ListTokens(tokenDeps))
+	apiTokens.POST("", handler.CreateToken(tokenDeps))
+	apiTokens.POST("/batch-delete", handler.BatchDeleteTokens(tokenDeps))
+	apiTokens.PUT("/:id", handler.UpdateToken(tokenDeps))
+	apiTokens.DELETE("/:id", handler.DeleteToken(tokenDeps))
+
+	apiPlayground := r.Group("/api/playground")
+	apiPlayground.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)))
+	apiPlayground.POST("/chat", handler.PlaygroundChat(gwDeps))
 
 	a := r.Group("/admin")
 	a.Use(middleware.JWTAuth([]byte(cfg.JWTSecret)), middleware.RequireAdmin())

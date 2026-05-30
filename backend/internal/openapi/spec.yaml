@@ -13,6 +13,7 @@ tags:
   - name: Health
   - name: Auth
   - name: User
+  - name: Portal
   - name: Admin
   - name: Gateway
   - name: Observability
@@ -84,13 +85,307 @@ paths:
               $ref: "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: Bearer access token
+          description: Bearer access token and optional user profile
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/LoginResponse"
         "401":
           description: Invalid credentials
+
+  /api/models:
+    get:
+      tags: [User]
+      summary: Model catalog for pricing page (public)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: provider
+          schema: { type: string }
+        - in: query
+          name: endpoint_type
+          schema: { type: string }
+        - in: query
+          name: billing_type
+          schema: { type: integer }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: token_group
+          schema: { type: string, default: default }
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated catalog with prices and multipliers
+
+  /api/models/{model}/price:
+    get:
+      tags: [User]
+      summary: Single model price breakdown
+      parameters:
+        - in: path
+          name: model
+          required: true
+          schema: { type: string }
+        - in: query
+          name: token_group
+          schema: { type: string }
+      responses:
+        "200":
+          description: Price breakdown
+        "404":
+          description: Unknown model
+
+  /api/token-groups:
+    get:
+      tags: [User]
+      summary: List token groups with multipliers
+      responses:
+        "200":
+          description: Token groups
+
+  /api/announcements:
+    get:
+      tags: [Portal]
+      summary: Active system announcements (public)
+      responses:
+        "200":
+          description: Announcement list
+
+  /api/dashboard/stats:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Dashboard metric cards (balance, usage, RPM/TPM)
+      responses:
+        "200":
+          description: Stats payload
+        "401":
+          description: Unauthorized
+
+  /api/dashboard/charts:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Model consumption charts
+      parameters:
+        - in: query
+          name: range
+          schema: { type: string, default: 7d, enum: [24h, 7d, 30d] }
+      responses:
+        "200":
+          description: Chart series
+
+  /api/dashboard/nodes:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Configured API node list (from PORTAL_API_NODES_JSON)
+      responses:
+        "200":
+          description: Nodes
+
+  /api/nodes/ping:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Probe each node /health and return latency
+      responses:
+        "200":
+          description: Per-node ping results
+
+  /api/logs/usage:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Paginated request usage logs
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, default: 10 }
+        - in: query
+          name: token_name
+          schema: { type: string }
+        - in: query
+          name: model
+          schema: { type: string }
+        - in: query
+          name: request_id
+          schema: { type: string }
+        - in: query
+          name: token_group
+          schema: { type: string }
+      responses:
+        "200":
+          description: Usage log page
+
+  /api/logs/tasks:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Paginated async task logs
+      responses:
+        "200":
+          description: Task log page
+
+  /api/wallet/summary:
+    get:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Wallet balance and affiliate summary
+      responses:
+        "200":
+          description: Wallet summary
+
+  /api/wallet/redeem:
+    post:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Redeem code (wallet flow)
+      responses:
+        "200":
+          description: Updated balance
+
+  /api/wallet/affiliate/transfer:
+    post:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Transfer pending affiliate earnings to balance
+      responses:
+        "200":
+          description: Transferred
+
+  /api/wallet/recharge/mock:
+    post:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Mock online recharge when RECHARGE_ENABLED=true
+      responses:
+        "200":
+          description: Credited
+        "403":
+          description: Recharge disabled
+
+  /api/playground/chat:
+    post:
+      tags: [Portal]
+      security: [{ bearerJWT: [] }]
+      summary: Playground chat (SSE stream); bills user quota like /v1/chat/completions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, messages]
+              properties:
+                model: { type: string }
+                messages: { type: array, items: { type: object } }
+                stream: { type: boolean, default: true }
+                max_tokens: { type: integer }
+                temperature: { type: number }
+                top_p: { type: number }
+                api_key_id: { type: integer, format: int64 }
+                token_group: { type: string }
+                custom_body: { type: boolean }
+      responses:
+        "200":
+          description: text/event-stream or JSON completion
+        "402":
+          description: Insufficient quota
+        "502":
+          description: Upstream unavailable
+
+  /api/tokens:
+    get:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: List API tokens for current user
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, default: 10 }
+      responses:
+        "200":
+          description: Paginated tokens (masked)
+    post:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Create API token (plaintext returned once)
+      responses:
+        "201":
+          description: Created with api_key
+
+  /api/tokens/batch-delete:
+    post:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Batch delete tokens by id
+      responses:
+        "200":
+          description: Deleted count
+
+  /api/tokens/{id}:
+    put:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Update token name, status, group, quota, models, IP whitelist
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Updated
+    delete:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Delete token
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+
+  /user/self:
+    get:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Current user profile (portal)
+      responses:
+        "200":
+          description: Profile
+        "401":
+          description: Missing or invalid JWT
+
+  /api/user/self:
+    get:
+      tags: [User]
+      security: [{ bearerJWT: [] }]
+      summary: Alias of GET /user/self for portal clients
+      responses:
+        "200":
+          description: Profile
+        "401":
+          description: Missing or invalid JWT
 
   /user/api-keys:
     post:
@@ -342,9 +637,10 @@ components:
 
     LoginRequest:
       type: object
-      required: [email, password]
+      required: [password]
       properties:
         email: { type: string, format: email }
+        username: { type: string, description: Login by username when email omitted }
         password: { type: string }
 
     LoginResponse:
