@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const gatewayBase = process.env.GATEWAY_BASE_URL ?? "http://127.0.0.1:8081";
+const gatewayBase = process.env.GATEWAY_BASE_URL ?? "http://127.0.0.1:8080";
 const frontendBase = process.env.FRONTEND_BASE_URL ?? "http://localhost:3000";
 
 export default defineConfig({
