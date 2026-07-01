@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -106,8 +107,11 @@ func ChatCompletions(deps GatewayDeps) gin.HandlerFunc {
 		}
 		uid, _ := c.Get(middleware.CtxUserID)
 		userID := uid.(int64)
-		apiKeyIDVal, _ := c.Get(middleware.CtxAPIKeyID)
-		apiKeyID := apiKeyIDVal.(int64)
+		apiKeyID := int64(0)
+		if apiKeyIDVal, ok := c.Get(middleware.CtxAPIKeyID); ok {
+			apiKeyID, _ = apiKeyIDVal.(int64)
+		}
+		tokenNameOverride := logTokenNameOverride(c)
 
 		targets, err := routing.BuildUpstreamTargets(deps.Repos, deps.UpstreamBase, deps.UpstreamKey, req.Model)
 		if err != nil {
@@ -235,7 +239,7 @@ func ChatCompletions(deps GatewayDeps) gin.HandlerFunc {
 				return
 			}
 			metrics.ChatCompletionsLatency.WithLabelValues(streamLabel).Observe(time.Since(start).Seconds())
-			if err := settleStream(ctx, deps, userID, apiKeyID, picked.ChannelID, req.Model, estimate, maxOut, promptTok, lat, resp.StatusCode); err != nil {
+			if err := settleStream(ctx, deps, userID, apiKeyID, picked.ChannelID, req.Model, estimate, maxOut, promptTok, lat, resp.StatusCode, tokenNameOverride); err != nil {
 				deps.Log.Warn("settle stream", zap.Error(err))
 			}
 			return
@@ -275,7 +279,7 @@ func ChatCompletions(deps GatewayDeps) gin.HandlerFunc {
 			_ = service.RefundQuota(ctx, deps.RDB, userID, diff)
 		}
 
-		if err := persistUsage(ctx, deps, userID, apiKeyID, picked.ChannelID, req.Model, actual, int(inTok), int(outTok), lat, resp.StatusCode, ""); err != nil {
+		if err := persistUsage(ctx, deps, userID, apiKeyID, picked.ChannelID, req.Model, actual, int(inTok), int(outTok), lat, resp.StatusCode, "", tokenNameOverride); err != nil {
 			deps.Log.Warn("persist", zap.Error(err))
 		}
 		c.Status(resp.StatusCode)
@@ -326,6 +330,7 @@ func settleStream(
 	modelName string,
 	estimate, maxOut, promptTok int64,
 	latencyMs, status int,
+	tokenNameOverride string,
 ) error {
 	actual := estimate
 	if err := deps.DB.Transaction(func(tx *gorm.DB) error {
@@ -335,6 +340,12 @@ func settleStream(
 				"used_quota": gorm.Expr("used_quota + ?", actual),
 			}).Error; err != nil {
 			return err
+		}
+		if apiKeyID > 0 {
+			if err := tx.Model(&model.APIKey{}).Where("id = ?", apiKeyID).
+				UpdateColumn("used_quota", gorm.Expr("used_quota + ?", actual)).Error; err != nil {
+				return err
+			}
 		}
 		var q int64
 		if err := tx.Model(&model.User{}).Select("quota").Where("id = ?", userID).Scan(&q).Error; err != nil {
@@ -363,7 +374,7 @@ func settleStream(
 	tt := pt + co
 	rec := &model.RequestLog{
 		UserID:           userID,
-		APIKeyID:         &apiKeyID,
+		APIKeyID:         apiKeyIDPtr(apiKeyID),
 		ChannelID:        channelID,
 		Model:            modelName,
 		RequestMethod:    http.MethodPost,
@@ -375,6 +386,7 @@ func settleStream(
 		LatencyMs:        &l,
 		StatusCode:       &sc,
 	}
+	enrichRequestLogMeta(deps.DB, rec, apiKeyID, modelName, actual, tokenNameOverride)
 	audit.SubmitRequestLog(deps.DB, deps.Log, rec)
 	rebate.EnqueueConsumeRebate(deps.DB, deps.Log, userID, actual, rebate.RefChat(modelName), deps.RebateEnabled, deps.RebateBPS)
 	return nil
@@ -389,6 +401,7 @@ func persistUsage(
 	actual int64,
 	inTok, outTok, latencyMs, status int,
 	errMsg string,
+	tokenNameOverride string,
 ) error {
 	err := deps.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.User{}).Where("id = ? AND quota >= ?", userID, actual).
@@ -397,6 +410,12 @@ func persistUsage(
 				"used_quota": gorm.Expr("used_quota + ?", actual),
 			}).Error; err != nil {
 			return err
+		}
+		if apiKeyID > 0 {
+			if err := tx.Model(&model.APIKey{}).Where("id = ?", apiKeyID).
+				UpdateColumn("used_quota", gorm.Expr("used_quota + ?", actual)).Error; err != nil {
+				return err
+			}
 		}
 		var q int64
 		if err := tx.Model(&model.User{}).Select("quota").Where("id = ?", userID).Scan(&q).Error; err != nil {
@@ -424,7 +443,7 @@ func persistUsage(
 	tt := inTok + outTok
 	rec := &model.RequestLog{
 		UserID:           userID,
-		APIKeyID:         &apiKeyID,
+		APIKeyID:         apiKeyIDPtr(apiKeyID),
 		ChannelID:        channelID,
 		Model:            modelName,
 		RequestMethod:    http.MethodPost,
@@ -437,9 +456,44 @@ func persistUsage(
 		StatusCode:       &sc,
 		ErrorMessage:     errMsg,
 	}
+	enrichRequestLogMeta(deps.DB, rec, apiKeyID, modelName, actual, tokenNameOverride)
 	audit.SubmitRequestLog(deps.DB, deps.Log, rec)
 	rebate.EnqueueConsumeRebate(deps.DB, deps.Log, userID, actual, rebate.RefChat(modelName), deps.RebateEnabled, deps.RebateBPS)
 	return nil
+}
+
+func enrichRequestLogMeta(db *gorm.DB, rec *model.RequestLog, apiKeyID int64, modelName string, cost int64, tokenNameOverride string) {
+	rec.RequestID = uuid.NewString()
+	if tokenNameOverride != "" {
+		rec.TokenName = tokenNameOverride
+		rec.TokenGroup = "default"
+	} else if apiKeyID > 0 {
+		var key model.APIKey
+		if err := db.First(&key, apiKeyID).Error; err == nil {
+			rec.TokenName = key.Name
+			rec.TokenGroup = apiKeyGroupSlug(db, key.TokenGroupID)
+		}
+	}
+	detail, _ := json.Marshal(gin.H{
+		"model":      modelName,
+		"cost_quota": cost,
+		"type":       "usage",
+	})
+	rec.BillingDetail = detail
+	if rec.LatencyMs != nil && rec.TimeToFirstMs == nil {
+		rec.TimeToFirstMs = rec.LatencyMs
+	}
+}
+
+func apiKeyGroupSlug(db *gorm.DB, groupID *int64) string {
+	if groupID == nil {
+		return "default"
+	}
+	var g model.TokenGroup
+	if err := db.First(&g, *groupID).Error; err != nil {
+		return "default"
+	}
+	return g.Slug
 }
 
 func Placeholder(name string) gin.HandlerFunc {

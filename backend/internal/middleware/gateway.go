@@ -31,21 +31,28 @@ func GatewayAPIKey(repos *repository.Repos) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid api key format"})
 			return
 		}
-		userID, keyID, models, err := repos.AuthenticateGatewayAPIKey(raw, prefixLen)
+		clientIP := c.ClientIP()
+		auth, err := repos.AuthenticateGatewayAPIKey(raw, prefixLen, clientIP)
 		if err != nil {
 			switch {
 			case errors.Is(err, repository.ErrInvalidAPIKey):
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid api key"})
+			case errors.Is(err, repository.ErrAPIKeyDisabled):
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "api key disabled"})
 			case errors.Is(err, repository.ErrUserInactive):
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "user inactive"})
+			case errors.Is(err, repository.ErrAPIKeyIPDenied):
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "ip not allowed"})
+			case errors.Is(err, repository.ErrAPIKeyQuota):
+				c.AbortWithStatusJSON(http.StatusPaymentRequired, gin.H{"error": "api key quota exceeded", "code": "insufficient_quota"})
 			default:
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "key lookup failed"})
 			}
 			return
 		}
-		c.Set(CtxUserID, userID)
-		c.Set(CtxAPIKeyID, keyID)
-		c.Set(CtxAPIModels, models)
+		c.Set(CtxUserID, auth.UserID)
+		c.Set(CtxAPIKeyID, auth.KeyID)
+		c.Set(CtxAPIModels, auth.Models)
 		c.Next()
 	}
 }

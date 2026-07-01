@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -136,8 +137,16 @@ func Register(deps AuthDeps) gin.HandlerFunc {
 }
 
 type loginReq struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email      string `json:"email"`
+	Username   string `json:"username"`
+	Password   string `json:"password" binding:"required"`
+}
+
+func loginIdentifier(req loginReq) string {
+	if req.Email != "" {
+		return req.Email
+	}
+	return req.Username
 }
 
 func Login(deps AuthDeps) gin.HandlerFunc {
@@ -147,8 +156,17 @@ func Login(deps AuthDeps) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		id := loginIdentifier(req)
+		if id == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email or username required"})
+			return
+		}
 		var u model.User
-		if err := deps.DB.Where("email = ?", req.Email).First(&u).Error; err != nil {
+		q := deps.DB.Where("email = ?", id)
+		if !strings.Contains(id, "@") {
+			q = deps.DB.Where("username = ?", id)
+		}
+		if err := q.First(&u).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}
@@ -165,8 +183,69 @@ func Login(deps AuthDeps) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "token"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"access_token": tok, "token_type": "Bearer", "expires_in": int(jwtTTL.Seconds())})
+		groupSlug := userTokenGroupSlug(deps.DB, &u)
+		c.JSON(http.StatusOK, gin.H{
+			"access_token": tok,
+			"token_type":   "Bearer",
+			"expires_in":   int(jwtTTL.Seconds()),
+			"success":      true,
+			"data": gin.H{
+				"id":           u.ID,
+				"username":     u.Username,
+				"display_name": u.Username,
+				"email":        u.Email,
+				"role":         u.Role,
+				"group":        groupSlug,
+				"status":       u.Status,
+			},
+		})
 	}
+}
+
+func UserSelf(deps AuthDeps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, ok := c.Get(middleware.CtxUserID)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		var u model.User
+		if err := deps.DB.First(&u, uid.(int64)).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		groupSlug := userTokenGroupSlug(deps.DB, &u)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data": gin.H{
+				"id":           u.ID,
+				"username":     u.Username,
+				"display_name": u.Username,
+				"email":        u.Email,
+				"role":         u.Role,
+				"group":        groupSlug,
+				"status":       u.Status,
+				"quota":               u.Quota,
+				"used_quota":          u.UsedQuota,
+				"invite_code":         u.InviteCode,
+				"affiliate_pending":   u.AffiliatePending,
+			},
+		})
+	}
+}
+
+func userTokenGroupSlug(db *gorm.DB, u *model.User) string {
+	if u.TokenGroupID != nil {
+		var g model.TokenGroup
+		if err := db.First(&g, *u.TokenGroupID).Error; err == nil {
+			return g.Slug
+		}
+	}
+	var g model.TokenGroup
+	if err := db.Where("slug = ?", "default").First(&g).Error; err == nil {
+		return g.Slug
+	}
+	return "default"
 }
 
 type createKeyReq struct {

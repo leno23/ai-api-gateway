@@ -1,0 +1,38 @@
+{
+  "name": "portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint",
+    "ai:verify": "bun \"$HOME/.cursor/skills/ai-ui-verification/scripts/run-skill.ts\"",
+    "ai:verify:ui": "bun run ai:verify -- --intent design-restore",
+    "ai:verify:static": "bun run ai:verify -- --intent static-check"
+  },
+  "dependencies": {
+    "@douyinfe/semi-icons": "^2.90.13",
+    "@douyinfe/semi-ui": "^2.90.13",
+    "lucide-react": "^0.511.0",
+    "next": "16.2.6",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^2.15.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6",
+    "pixelmatch": "^7.2.0",
+    "playwright": "^1.60.0",
+    "pngjs": "^7.0.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

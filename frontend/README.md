@@ -30,6 +30,18 @@ Next.js（App Router）+ Ant Design + Tailwind。契约对齐 `../backend/intern
 | `npm run dev` | 开发 |
 | `npm run build` / `npm start` | 生产构建与启动 |
 | `npm run lint` | ESLint |
+| `npm run test:e2e` | Playwright 冒烟测试（需网关与 `npm run dev` 已启动） |
+
+### E2E 冒烟测试
+
+先启动 Postgres/Redis、网关（默认 `http://127.0.0.1:8081`）与本前端 dev，再执行：
+
+```bash
+npx playwright install chromium   # 首次
+GATEWAY_BASE_URL=http://127.0.0.1:8081 FRONTEND_BASE_URL=http://localhost:3000 npm run test:e2e
+```
+
+可选环境变量：`ADMIN_EMAIL`、`ADMIN_PASSWORD`（默认 `admin@example.com` / `Admin@12345`）。
 
 ## 规格
 

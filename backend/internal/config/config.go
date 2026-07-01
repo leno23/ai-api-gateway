@@ -26,6 +26,14 @@ type Config struct {
 	RebateBPS int
 	// RebatePollSec is worker poll interval when RebateEnabled; 0 uses 10.
 	RebatePollSec int
+	// PortalAPINodesJSON is JSON array of {name,url,region} for dashboard node card.
+	PortalAPINodesJSON string
+	// RechargeEnabled allows mock online recharge API (dev only by default).
+	RechargeEnabled bool
+	// PortalOrigin is used to build invite URLs in wallet API.
+	PortalOrigin string
+	// AffiliateRechargeBPS is inviter share on invitee recharge (e.g. 1000 = 10%).
+	AffiliateRechargeBPS int
 }
 
 func Load() (*Config, error) {
@@ -43,6 +51,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("REBATE_ENABLED", false)
 	viper.SetDefault("REBATE_BPS", 0)
 	viper.SetDefault("REBATE_POLL_SEC", 10)
+	viper.SetDefault("PORTAL_API_NODES_JSON", "")
+	viper.SetDefault("RECHARGE_ENABLED", false)
+	viper.SetDefault("PORTAL_ORIGIN", "http://localhost:3001")
+	viper.SetDefault("AFFILIATE_RECHARGE_BPS", 1000)
 	_ = viper.ReadInConfig()
 
 	return &Config{
@@ -59,5 +71,9 @@ func Load() (*Config, error) {
 		RebateEnabled:         viper.GetBool("REBATE_ENABLED"),
 		RebateBPS:             viper.GetInt("REBATE_BPS"),
 		RebatePollSec:         viper.GetInt("REBATE_POLL_SEC"),
+		PortalAPINodesJSON:    viper.GetString("PORTAL_API_NODES_JSON"),
+		RechargeEnabled:       viper.GetBool("RECHARGE_ENABLED"),
+		PortalOrigin:          strings.TrimRight(viper.GetString("PORTAL_ORIGIN"), "/"),
+		AffiliateRechargeBPS:  viper.GetInt("AFFILIATE_RECHARGE_BPS"),
 	}, nil
 }

@@ -2,7 +2,7 @@
 
 Go 实现的 OpenAI 兼容 API 网关（多租户 API Key、额度、兑换/邀请、渠道路由）。本仓库为 **monorepo**：**`backend/`** 为网关服务，**`frontend/`** 为管理控制台（Next.js + Ant Design）。
 
-设计说明见 `docs/` 与 OpenSpec：**后端** `openspec/changes/gateway-foundation-invite-billing/`；**管理控制台前端提案** `openspec/changes/gateway-admin-console-frontend/`。
+设计说明见 `docs/` 与 OpenSpec：**后端** `openspec/changes/gateway-foundation-invite-billing/`；**管理控制台前端** `openspec/changes/gateway-admin-console-frontend/`；**租户门户（蓝移类产品）** 已归档至 `openspec/changes/archive/2026-05-27-gateway-tenant-portal-platform/`，现行规格见 `openspec/specs/portal-*/`（需求来源：`zhencai/lanyiapi-site-audit/IMPLEMENTATION_PROMPT.md`）。
 
 ## 目录结构
 
@@ -10,16 +10,22 @@ Go 实现的 OpenAI 兼容 API 网关（多租户 API Key、额度、兑换/邀�
 |------|------|
 | `backend/` | Go 网关：`go.mod`、`cmd/server`、`internal/`、`migrations/` |
 | `frontend/` | 管理控制台（`npm run dev`，详见 `frontend/README.md`） |
+| `portal/` | 租户门户 Semi UI（`npm run dev`，默认端口 3001，详见 `portal/README.md`） |
 | `docker-compose.yml` | 本地 Postgres + Redis（仓库根，与后端 `.env` 配合） |
 | `openspec/` | 变更提案与规格 |
 
 ## 运行（后端）
 
 1. 在仓库根执行：`docker compose up -d`（Postgres + Redis，若已自备可跳过）
-2. 应用迁移：`backend/migrations/001_init.sql`
+2. 应用迁移：`backend/migrations/001_init.sql`；门户另需 `003`–`006` 迁移脚本（见 `portal/README.md`）
 3. 若启用消费返利：追加 `backend/migrations/002_rebate_tasks.sql`，并设置 `REBATE_ENABLED=true`、`REBATE_BPS`（万分比，如 100=1%）
 4. 复制 `backend/.env.example` 为 `backend/.env` 并按需填写
 5. `cd backend && go run ./cmd/server`
+
+## 运行（租户门户）
+
+1. `cd portal && cp .env.example .env.local`，设置 `NEXT_PUBLIC_GATEWAY_API_URL`
+2. `npm install && npm run dev` → [http://localhost:3001](http://localhost:3001)
 
 ## 运行（管理控制台）
 
@@ -46,3 +52,5 @@ Go 实现的 OpenAI 兼容 API 网关（多租户 API Key、额度、兑换/邀�
 归档前在仓库根目录执行：
 
 `npx @fission-ai/openspec@latest status --change gateway-foundation-invite-billing`
+
+租户门户 change 已于 2026-05-27 归档（`openspec/changes/archive/2026-05-27-gateway-tenant-portal-platform/`）。现行能力规格：`openspec/specs/portal-public-site/` 等 10 个 `portal-*` spec。

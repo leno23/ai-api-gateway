@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@import "../node_modules/@douyinfe/semi-ui/dist/css/semi.min.css";
+
+:root {
+  --portal-bg: #f6f7f9;
+  --portal-primary: #007aff;
+  --portal-primary-dark: #0066d6;
+  --portal-gradient-start: #007aff;
+  --portal-gradient-end: #00c2ff;
+  --portal-sidebar-width: 240px;
+  --portal-header-height: 56px;
+  --portal-card-radius: 12px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--portal-bg);
+}
+
+.portal-hero-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--portal-gradient-start) 0%,
+    var(--portal-gradient-end) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.portal-pricing-banner {
+  background: linear-gradient(120deg, #1677ff 0%, #722ed1 55%, #9254de 100%);
+}
+
+.portal-card {
+  border-radius: var(--portal-card-radius);
+}
+
+@keyframes partner-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-partner-marquee {
+  animation: partner-marquee 28s linear infinite;
+}
